@@ -32,4 +32,5 @@ if __name__ == "__main__":
         nbsimu=1000000,
         mode="downsized",  # "fullsize" ou "downsized"
         report_name="summary_CFHZ",
+        downsized_subdir=None,  # sous-dossier de YELT_downsized_final ; None = le premier par ordre alphabétique
     ).run()
