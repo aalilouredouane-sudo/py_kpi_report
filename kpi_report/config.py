@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 RETURN_PERIODS = range(1, 2001)
@@ -13,6 +15,7 @@ class ModeConfig:
     n_years: int                     # nombre d'années simulées
     descend_first_dir: bool = False  # descendre dans le premier sous-dossier trouvé
     suffix: str = ""                 # suffixe du nom du rapport
+    lob_prefix: str | None = None    # préfixe des colonnes de perte par LoB, sommées pour le GROUP
 
 
 MODES = {
@@ -21,6 +24,7 @@ MODES = {
         pattern="*YELT_full_size*.csv",
         loss_col="TOTAL_LOSS",
         n_years=500000,
+        lob_prefix="LOSS_",
     ),
     "downsized": ModeConfig(
         folder="YELT_downsized_final",
