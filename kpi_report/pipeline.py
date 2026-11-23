@@ -26,7 +26,7 @@ class KpiReportPipeline:
         self.mode_name = mode
         self.mode = MODES[mode]
         self.report_name = report_name
-        self.n_years = n_years or self.mode.n_years
+        self.n_years = n_years or self.mode.n_years or nbsimu
         self.downsized_subdir = downsized_subdir
         self._check_parameters()
 

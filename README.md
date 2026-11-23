@@ -20,6 +20,7 @@ The results are summarised in an Excel workbook, with one sheet per entity and t
 ```
 py_kpi_report/
 ├── main.py                  # entry point: run parameters and pipeline launch
+├── merge_group.py           # separate step: builds the GROUP entity folder (run before main.py)
 ├── requirements.txt         # dependencies (numpy, pandas, openpyxl)
 ├── README.md
 └── kpi_report/              # computation package
@@ -29,6 +30,7 @@ py_kpi_report/
     ├── entity.py            # KPI tables of all the catfiles of one entity
     ├── reader.py            # reading and checking a catfile, building its AEP / OEP strips
     ├── metrics.py           # AEP / OEP / TVaR computation per return period
+    ├── group.py             # GROUP catfiles: aggregation of the entities, seed by seed
     └── exporter.py          # Excel output
 ```
 
@@ -51,17 +53,18 @@ py_kpi_report/
     └── ...
 ```
 
-- **Fullsize catfile**: any file matching `*YELT_full_size*.csv` in `YELT_full_size`. Columns `EVENTID`, `YEAR`, `TOTAL_LOSS`.
+- **Fullsize catfile**: any file matching `*YELT_full_size*.csv` in `YELT_full_size`. Columns `EVENTID`, `YEAR` and either `TOTAL_LOSS` or one or more LoB columns `LOSS_<LoB>` (e.g. `LOSS_LoB1`, `LOSS_LoB3`), which are summed. If `TOTAL_LOSS` is present, it is used and the LoB columns are ignored.
 - **Downsized catfile**: any file matching `f2*pool_property*.csv` in a subfolder of `YELT_downsized_final`: the one given by `downsized_subdir`, or by default the first subfolder in alphabetical order. Columns `EVENTID`, `YEAR`, `Loss`.
 - Column names are case-sensitive. Other columns are ignored and not loaded.
-- Years must be between 1 and the number of simulated years (500,000 in fullsize, 50,000 in downsized by default). A year without events counts as 0.
+- Years must be between 1 and the number of simulated years (`nbsimu` in fullsize, 50,000 in downsized). A year without events counts as 0.
 
 ### Input checks
 
 The run stops with an explicit error, rather than producing wrong figures, when:
 - a catfile folder or the `downsized_subdir` folder does not exist, or `YELT_downsized_final` has no subfolder;
 - a folder contains no catfile matching the mode pattern;
-- a catfile lacks one of the expected columns (the message lists the expected and found columns);
+- a catfile lacks `EVENTID` or `YEAR`, or has no loss column (the message lists the expected and found columns);
+- in `merge_group.py`: `entities` contains the group name, the entities do not have the same seeds in a simulation folder, or two catfiles of a folder map to the same seed;
 - a catfile contains a year outside 1..`n_years`;
 - two entities give the same sheet name, or an entity is named `Parameters`.
 
@@ -83,11 +86,10 @@ A warning is printed, and the run continues, when:
    | `root` | Root folder of the runs (contains one folder per entity). |
    | `output_dir` | Output folder of the Excel file. |
    | `entities` | Entities to process, e.g. `["CHE", "DEU", "FRA"]`. One sheet is created per entity. |
-   | `simus` | Simulation folders to read for each entity, e.g. `["n1000000"]`. |
-   | `nbsimu` | Number of simulations of the run. Only used in the output file name: `1000000` adds the `_1m` suffix. |
-   | `mode` | `"fullsize"` or `"downsized"`: which catfiles are read (see [config.py](kpi_report/config.py)). |
+   | `nbsimu` | Number of simulations of the run, set at the top of the `__main__` block. It gives the simulation folder read (`simus = [f"n{nbsimu}"]`, e.g. `n1000000`), the number of years in fullsize (`n_years = nbsimu`) and the `_1m` suffix of the output file name when it is `1000000`. |
+   | `mode` | `"fullsize"` or `"downsized"`, set at the top of the `__main__` block: which catfiles are read (see [config.py](kpi_report/config.py)). |
    | `report_name` | Prefix of the output file name, e.g. `summary_CFHZ`. |
-   | `n_years` | Optional. Number of simulated years used to build the strips. Defaults to the mode value: 500,000 in fullsize, 50,000 in downsized. Set it explicitly if the catfiles cover a different number of years (e.g. a fullsize run with 1,000,000 simulations). |
+   | `n_years` | Number of simulated years used to build the strips. In `main.py`: `nbsimu` in fullsize, `None` in downsized, which uses the value of [config.py](kpi_report/config.py) (50,000). |
    | `downsized_subdir` | Optional, downsized mode only. Name of the subfolder of `YELT_downsized_final` to read. If `None`, the first subfolder in alphabetical order is used. |
 
 3. **Run the computation**: `python main.py`.
@@ -101,12 +103,41 @@ A warning is printed, and the run continues, when:
 
 5. **Order of the blocks.** Blocks appear in the order of `simus`, then in alphabetical order of the catfile names within each simulation folder. Two catfiles with the same name in different simulation folders give two separate blocks.
 
+### GROUP folder (`merge_group.py`)
+
+`merge_group.py` is a separate step, independent of the report. It writes a `GROUP` entity folder in `root`, with the same layout as the other entities:
+
+```
+<root>/GROUP/<simu>/YELT/YELT_Central/YELT_full_size/GROUP_<...>.csv              # fullsize
+<root>/GROUP/<simu>/YELT/YELT_Central/YELT_downsized_final/<subfolder>/<...>.csv  # downsized
+```
+
+1. Set its parameters at the bottom of [merge_group.py](merge_group.py):
+
+   | Parameter | Purpose |
+   |---|---|
+   | `root` | Root folder of the runs (same as in `main.py`). |
+   | `entities` | Entities to aggregate. |
+   | `nbsimu` | Number of simulations: the folder aggregated is `n<nbsimu>` (`simus = [f"n{nbsimu}"]`). |
+   | `modes` | Catfiles to aggregate: `["fullsize", "downsized"]` by default. |
+   | `group_name` | Name of the folder created, `"GROUP"` by default. Must not be in `entities`. |
+   | `downsized_subdir` | Same as in `main.py`. |
+
+2. Run `python merge_group.py`.
+3. To get a `GROUP` sheet in the report, add `"GROUP"` to `entities` in `main.py` and run `python main.py`. `GROUP` is then read like any other entity.
+
+How the group catfiles are built:
+- **Seeds.** In each catfile folder, the catfile without suffix is seed 0 and the catfile with suffix `_x` is seed x. A name counts as suffixed only if the same name without `_x` exists in the folder. All entities must have the same seeds.
+- **Aggregation.** For each seed, the catfiles of all entities are read. The loss columns of each row are summed (all LoBs of the entity in fullsize; `Loss` in downsized, other columns ignored). The rows are then stacked and summed by `(YEAR, EVENTID)`. The annual losses (AEP) are the same as with a plain concatenation. An event that hits several entities counts as one event for the OEP.
+- **Group catfile.** Columns `YEAR`, `EVENTID`, then `LOSS_LoB1` and `TOTAL_LOSS` in fullsize (a single LoB, equal to the total), or `Loss` in downsized. The file name is the one of the first entity's catfile for that seed, with the entity name replaced by the group name. In downsized mode, the subfolder has the name of the first entity's subfolder.
+- **Rerun.** Each run deletes the group catfiles matching the mode pattern in the output folder before writing new ones, so old seeds are not mixed in.
+
 ---
 
 ## Code description
 
 ### `main.py`
-Entry point. It checks that `numpy`, `pandas` and `openpyxl` are installed and installs any that are missing. It then builds a `KpiReportPipeline` with the run parameters and calls `.run()`. Warnings are printed through Python's `logging` module.
+Entry point. It checks that `numpy`, `pandas` and `openpyxl` are installed and installs any that are missing. `nbsimu` and `mode` are set at the top of the `__main__` block; the simulation folder and, in fullsize, `n_years` are derived from `nbsimu`. It then builds a `KpiReportPipeline` with the run parameters and calls `.run()`. Warnings are printed through Python's `logging` module.
 
 ### `kpi_report/config.py`
 Global constants:
@@ -115,13 +146,14 @@ Global constants:
 - `NBSIMU_1M = 1000000`: value of `nbsimu` that adds the `_1m` suffix to the report name.
 - `ModeConfig` and `MODES`: description of each mode.
 
-  | Mode | `folder` | `pattern` | `loss_col` | `n_years` | `descend_first_dir` | `suffix` |
-  |---|---|---|---|---|---|---|
-  | `fullsize` | `YELT_full_size` | `*YELT_full_size*.csv` | `TOTAL_LOSS` | 500,000 | `False` | none |
-  | `downsized` | `YELT_downsized_final` | `f2*pool_property*.csv` | `Loss` | 50,000 | `True` | `_downsized` |
+  | Mode | `folder` | `pattern` | `loss_col` | `n_years` | `descend_first_dir` | `suffix` | `lob_prefix` |
+  |---|---|---|---|---|---|---|---|
+  | `fullsize` | `YELT_full_size` | `*YELT_full_size*.csv` | `TOTAL_LOSS` | `None` (= `nbsimu`) | `False` | none | `LOSS_` |
+  | `downsized` | `YELT_downsized_final` | `f2*pool_property*.csv` | `Loss` | 50,000 | `True` | `_downsized` | none |
 
 ### `kpi_report/pipeline.py` — `KpiReportPipeline`
 Orchestrates the full run:
+- `n_years` is the value passed, otherwise the mode value, otherwise `nbsimu` (fullsize).
 - `_check_parameters` runs at construction: sheet names must be unique and must not be `Parameters`; in fullsize mode, a warning is printed if `n_years` differs from `nbsimu`.
 - `output_path` builds the output file name: `<report_name>`, then `_1m` if `nbsimu = 1000000`, then the mode suffix.
 - `run()`:
@@ -139,7 +171,8 @@ Orchestrates the full run:
 
 ### `kpi_report/reader.py` — `CatfileReader`
 Reads one catfile and builds its strips over years 1 to `n_years`.
-- `event_losses` checks the header (`_check_columns`), then reads only the `EVENTID`, `YEAR` and loss columns and renames them to `eventid`, `year`, `total`. The file is read only once. `_check_years` then raises an error if a year is outside 1..`n_years`, and prints a warning if the last year with an event is at most half of `n_years`.
+- `loss_columns` checks the header and returns the loss columns: `loss_col` if present, otherwise the columns starting with `lob_prefix` (fullsize LoBs). It is shared with `GroupBuilder`.
+- `event_losses` reads only the `EVENTID`, `YEAR` and loss columns, and builds `eventid`, `year` and `total` (sum of the loss columns). The file is read only once. `_check_years` then raises an error if a year is outside 1..`n_years`, and prints a warning if the last year with an event is at most half of `n_years`.
 - `n_events` and `last_year` describe the catfile for the `Parameters` sheet.
 - `annual_losses` returns the **AEP strip**: for each year, the sum of the event losses.
 - `max_event_losses` returns the **OEP strip**: for each year, the largest event loss.
@@ -151,6 +184,10 @@ Reads one catfile and builds its strips over years 1 to `n_years`.
   - `TVaR_AEP` and `TVaR_OEP` are the averages of the k largest values.
 
   Example with 50,000 years: for RP = 200, k = 250, so the AEP200 is the 250th largest annual loss and the TVaR200 is the average of the 250 largest. For RP = 1, k = n_years: the AEP is the smallest annual loss and the TVaR is the mean (AAL).
+
+### `kpi_report/group.py` — `GroupBuilder`
+- `seed_catfiles` maps each catfile of a folder to its seed (0 without suffix, x for the suffix `_x`), and raises an error if two files map to the same seed.
+- `GroupBuilder.build` reuses `EntityReport` to list the catfiles of each entity, checks that all entities have the same seeds, and for each seed writes the aggregated catfile into the `GROUP` folder.
 
 ### `kpi_report/exporter.py` — `ExcelExporter`
 Writes a workbook with one sheet per entity, then the `Parameters` sheet. Sheet names are truncated to 31 characters (Excel limit), and the index is not written. In an entity sheet, each catfile occupies a block of `BLOCK_WIDTH = 6` columns (5 KPI columns and 1 empty column): the label in bold on row 1, the KPI table from row 2.
