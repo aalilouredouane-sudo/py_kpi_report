@@ -12,7 +12,7 @@ class ModeConfig:
     folder: str                      # sous-dossier de YELT_ROOT contenant les catfiles
     pattern: str                     # motif glob des catfiles
     loss_col: str                    # colonne de perte à lire
-    n_years: int                     # nombre d'années simulées
+    n_years: int | None              # nombre d'années simulées ; None = nbsimu (donné dans main.py)
     descend_first_dir: bool = False  # descendre dans le premier sous-dossier trouvé
     suffix: str = ""                 # suffixe du nom du rapport
     lob_prefix: str | None = None    # préfixe des colonnes de perte par LoB, sommées pour le GROUP
@@ -23,7 +23,7 @@ MODES = {
         folder="YELT_full_size",
         pattern="*YELT_full_size*.csv",
         loss_col="TOTAL_LOSS",
-        n_years=500000,
+        n_years=None,  # une année par simulation : n_years = nbsimu
         lob_prefix="LOSS_",
     ),
     "downsized": ModeConfig(

@@ -56,7 +56,7 @@ py_kpi_report/
 - **Fullsize catfile**: any file matching `*YELT_full_size*.csv` in `YELT_full_size`. Columns `EVENTID`, `YEAR` and either `TOTAL_LOSS` or one or more LoB columns `LOSS_<LoB>` (e.g. `LOSS_LoB1`, `LOSS_LoB3`), which are summed. If `TOTAL_LOSS` is present, it is used and the LoB columns are ignored.
 - **Downsized catfile**: any file matching `f2*pool_property*.csv` in a subfolder of `YELT_downsized_final`: the one given by `downsized_subdir`, or by default the first subfolder in alphabetical order. Columns `EVENTID`, `YEAR`, `Loss`.
 - Column names are case-sensitive. Other columns are ignored and not loaded.
-- Years must be between 1 and the number of simulated years (500,000 in fullsize, 50,000 in downsized by default). A year without events counts as 0.
+- Years must be between 1 and the number of simulated years (`nbsimu` in fullsize, 50,000 in downsized). A year without events counts as 0.
 
 ### Input checks
 
@@ -86,11 +86,10 @@ A warning is printed, and the run continues, when:
    | `root` | Root folder of the runs (contains one folder per entity). |
    | `output_dir` | Output folder of the Excel file. |
    | `entities` | Entities to process, e.g. `["CHE", "DEU", "FRA"]`. One sheet is created per entity. |
-   | `simus` | Simulation folders to read for each entity, e.g. `["n1000000"]`. |
-   | `nbsimu` | Number of simulations of the run. Only used in the output file name: `1000000` adds the `_1m` suffix. |
-   | `mode` | `"fullsize"` or `"downsized"`: which catfiles are read (see [config.py](kpi_report/config.py)). |
+   | `nbsimu` | Number of simulations of the run, set at the top of the `__main__` block. It gives the simulation folder read (`simus = [f"n{nbsimu}"]`, e.g. `n1000000`), the number of years in fullsize (`n_years = nbsimu`) and the `_1m` suffix of the output file name when it is `1000000`. |
+   | `mode` | `"fullsize"` or `"downsized"`, set at the top of the `__main__` block: which catfiles are read (see [config.py](kpi_report/config.py)). |
    | `report_name` | Prefix of the output file name, e.g. `summary_CFHZ`. |
-   | `n_years` | Optional. Number of simulated years used to build the strips. Defaults to the mode value: 500,000 in fullsize, 50,000 in downsized. Set it explicitly if the catfiles cover a different number of years (e.g. a fullsize run with 1,000,000 simulations). |
+   | `n_years` | Number of simulated years used to build the strips. In `main.py`: `nbsimu` in fullsize, `None` in downsized, which uses the value of [config.py](kpi_report/config.py) (50,000). |
    | `downsized_subdir` | Optional, downsized mode only. Name of the subfolder of `YELT_downsized_final` to read. If `None`, the first subfolder in alphabetical order is used. |
 
 3. **Run the computation**: `python main.py`.
@@ -119,7 +118,7 @@ A warning is printed, and the run continues, when:
    |---|---|
    | `root` | Root folder of the runs (same as in `main.py`). |
    | `entities` | Entities to aggregate. |
-   | `simus` | Simulation folders to aggregate, e.g. `["n1000000", "n500000"]`. |
+   | `nbsimu` | Number of simulations: the folder aggregated is `n<nbsimu>` (`simus = [f"n{nbsimu}"]`). |
    | `modes` | Catfiles to aggregate: `["fullsize", "downsized"]` by default. |
    | `group_name` | Name of the folder created, `"GROUP"` by default. Must not be in `entities`. |
    | `downsized_subdir` | Same as in `main.py`. |
@@ -138,7 +137,7 @@ How the group catfiles are built:
 ## Code description
 
 ### `main.py`
-Entry point. It checks that `numpy`, `pandas` and `openpyxl` are installed and installs any that are missing. It then builds a `KpiReportPipeline` with the run parameters and calls `.run()`. Warnings are printed through Python's `logging` module.
+Entry point. It checks that `numpy`, `pandas` and `openpyxl` are installed and installs any that are missing. `nbsimu` and `mode` are set at the top of the `__main__` block; the simulation folder and, in fullsize, `n_years` are derived from `nbsimu`. It then builds a `KpiReportPipeline` with the run parameters and calls `.run()`. Warnings are printed through Python's `logging` module.
 
 ### `kpi_report/config.py`
 Global constants:
@@ -149,11 +148,12 @@ Global constants:
 
   | Mode | `folder` | `pattern` | `loss_col` | `n_years` | `descend_first_dir` | `suffix` | `lob_prefix` |
   |---|---|---|---|---|---|---|---|
-  | `fullsize` | `YELT_full_size` | `*YELT_full_size*.csv` | `TOTAL_LOSS` | 500,000 | `False` | none | `LOSS_` |
+  | `fullsize` | `YELT_full_size` | `*YELT_full_size*.csv` | `TOTAL_LOSS` | `None` (= `nbsimu`) | `False` | none | `LOSS_` |
   | `downsized` | `YELT_downsized_final` | `f2*pool_property*.csv` | `Loss` | 50,000 | `True` | `_downsized` | none |
 
 ### `kpi_report/pipeline.py` — `KpiReportPipeline`
 Orchestrates the full run:
+- `n_years` is the value passed, otherwise the mode value, otherwise `nbsimu` (fullsize).
 - `_check_parameters` runs at construction: sheet names must be unique and must not be `Parameters`; in fullsize mode, a warning is printed if `n_years` differs from `nbsimu`.
 - `output_path` builds the output file name: `<report_name>`, then `_1m` if `nbsimu = 1000000`, then the mode suffix.
 - `run()`:

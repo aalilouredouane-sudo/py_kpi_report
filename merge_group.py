@@ -15,7 +15,8 @@ from kpi_report.group import GroupBuilder  # noqa: E402
 if __name__ == "__main__":
     root = Path("C:/Users/B497NP/OneDrive - AXA/Desktop/3. Terrorism and Conflagration/FY26/10. others/4. convergence/runs_CFHZ")
     entities = ["CHE", "DEU", "FRA"]
-    simus = ["n1000000", "n500000"]
+    nbsimu = 1000000
+    simus = [f"n{nbsimu}"]
     modes = ["fullsize", "downsized"]  # catfiles à agréger
     group_name = "GROUP"
     downsized_subdir = None  # sous-dossier de YELT_downsized_final ; None = le premier par ordre alphabétique
